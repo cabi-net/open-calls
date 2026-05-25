@@ -1,0 +1,4 @@
+playwright
+feedparser
+beautifulsoup4
+requests
