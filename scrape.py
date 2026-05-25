@@ -12,31 +12,16 @@ DATE = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 KEYWORDS = [
     "open call", "open-call", "residency", "commission", "fellowship",
     "grant", "award", "application", "deadline", "opportunity", "prize",
-    "appel à", "appel ouvert"  # French
+    "appel à", "appel ouvert", "call for", "apply", "submissions"
 ]
 
 # ─── RSS SOURCES ─────────────────────────────────────────────────────────────
 
 RSS_FEEDS = [
     {
-        "name": "Rhizome",
-        "url": "https://rhizome.org/feed/",
-        "filter": True  # filter by keywords
-    },
-    {
-        "name": "Creative Applications",
-        "url": "https://www.creativeapplications.net/feed/",
-        "filter": True
-    },
-    {
-        "name": "SFPC",
-        "url": "https://sfpc.io/feed.xml",
-        "filter": False  # everything from SFPC is relevant
-    },
-    {
         "name": "Residency Unlimited",
         "url": "https://residencyunlimited.org/feed/",
-        "filter": False
+        "filter": True  # filter by keywords to avoid noise
     },
     {
         "name": "ResArtis",
@@ -44,79 +29,99 @@ RSS_FEEDS = [
         "filter": False
     },
     {
-        "name": "Canada Council",
-        "url": "https://canadacouncil.ca/rss/all",
-        "filter": False
+        "name": "Ars Electronica Blog",
+        "url": "https://ars.electronica.art/news/feed/",
+        "filter": True
     },
     {
-        "name": "Ars Electronica",
-        "url": "https://ars.electronica.art/feed/",
-        "filter": True
+        "name": "SFPC Blog",
+        "url": "https://blog.sfpc.io/rss",
+        "filter": False
     },
 ]
 
-# ─── SCRAPE TARGETS (no RSS) ──────────────────────────────────────────────────
+# ─── SCRAPE TARGETS ───────────────────────────────────────────────────────────
 
 SCRAPE_TARGETS = [
     {
+        "name": "Rhizome",
+        "url": "https://rhizome.org/community/",
+        "wait": 3000,
+    },
+    {
         "name": "Eyebeam",
         "url": "https://www.eyebeam.org/opportunities/",
-        "selector": "article, .opportunity, .post, h2, h3",
+        "wait": 2000,
     },
     {
         "name": "InterAccess",
         "url": "https://interaccess.org/opportunities",
-        "selector": "article, .views-row, h2, h3",
+        "wait": 2000,
     },
     {
         "name": "Harbourfront Centre",
         "url": "https://harbourfrontcentre.com/opportunities/",
-        "selector": "article, .opportunity, h2, h3",
+        "wait": 2000,
     },
     {
         "name": "Gray Area",
         "url": "https://grayarea.org/opportunities/",
-        "selector": "article, .opportunity, h2, h3",
+        "wait": 2000,
     },
     {
         "name": "Onassis ONX",
         "url": "https://onassisusa.org/programs",
-        "selector": "article, .program, h2, h3",
+        "wait": 3000,
     },
     {
         "name": "transmediale",
         "url": "https://transmediale.de/en/calls",
-        "selector": "article, .call, h2, h3",
+        "wait": 3000,
     },
     {
         "name": "MUTEK",
         "url": "https://montreal.mutek.org/en/calls",
-        "selector": "article, .call, h2, h3",
+        "wait": 2000,
     },
     {
         "name": "Ontario Arts Council",
         "url": "https://www.arts.on.ca/grants",
-        "selector": ".grant, article, h2, h3",
+        "wait": 3000,
+    },
+    {
+        "name": "Canada Council",
+        "url": "https://canadacouncil.ca/funding/grants",
+        "wait": 3000,
     },
     {
         "name": "Creative Capital",
         "url": "https://creative-capital.org/apply/",
-        "selector": "article, .opportunity, h2, h3",
+        "wait": 2000,
     },
     {
         "name": "La Gaite Lyrique",
         "url": "https://gaite-lyrique.net/appels-a-projets",
-        "selector": "article, h2, h3",
+        "wait": 3000,
+    },
+    {
+        "name": "SFPC",
+        "url": "https://sfpc.io/",
+        "wait": 2000,
+    },
+    {
+        "name": "Creative Applications",
+        "url": "https://www.creativeapplications.net/category/jobs/",
+        "wait": 2000,
     },
     {
         "name": "Blank100",
         "url": "https://blank100.com/opportunities/",
-        "selector": "article, .opportunity, h2, h3",
+        "wait": 2000,
     },
     {
         "name": "CAFE",
         "url": "https://www.callforentry.org/",
-        "selector": ".opportunity, h2, h3, .listing",
+        "wait": 3000,
     },
 ]
 
@@ -137,12 +142,12 @@ def fetch_rss():
         print(f"Fetching RSS: {source['name']}...")
         try:
             feed = feedparser.parse(source["url"])
-            for entry in feed.entries[:20]:  # last 20 entries
+            count = 0
+            for entry in feed.entries[:30]:
                 title = entry.get("title", "")
                 summary = entry.get("summary", "")
                 link = entry.get("link", "")
                 published = entry.get("published", "")
-
                 text = f"{title} {summary}"
 
                 if source["filter"] and not matches_keywords(text):
@@ -152,10 +157,11 @@ def fetch_rss():
                     "source": source["name"],
                     "title": clean(title),
                     "url": link,
-                    "excerpt": clean(BeautifulSoup(summary, "html.parser").get_text())[:200],
+                    "excerpt": clean(BeautifulSoup(summary, "html.parser").get_text())[:250],
                     "published": published,
-                    "type": "rss"
                 })
+                count += 1
+            print(f"  {count} items")
         except Exception as e:
             print(f"  RSS error for {source['name']}: {e}")
 
@@ -167,21 +173,20 @@ async def scrape_target(page, target):
     results = []
     try:
         await page.goto(target["url"], wait_until="networkidle", timeout=30000)
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(target.get("wait", 2000))
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")
 
-        # try to find links with keyword-matching text
-        links = soup.find_all("a", href=True)
         seen = set()
 
-        for link in links:
+        # Strategy 1: find links with keyword-matching text
+        for link in soup.find_all("a", href=True):
             text = link.get_text(separator=" ", strip=True)
             href = link["href"]
 
-            if len(text) < 10:
+            if len(text) < 8 or len(text) > 200:
                 continue
-            if not matches_keywords(text):
+            if not matches_keywords(f"{text} {href}"):
                 continue
             if href in seen:
                 continue
@@ -192,32 +197,40 @@ async def scrape_target(page, target):
             if href.startswith("/"):
                 base = "/".join(target["url"].split("/")[:3])
                 href = base + href
+            elif not href.startswith("http"):
+                continue
+
+            # find nearby description text
+            parent = link.parent
+            excerpt = ""
+            if parent:
+                siblings = parent.find_next_siblings(["p", "div"], limit=1)
+                if siblings:
+                    excerpt = clean(siblings[0].get_text())[:200]
 
             results.append({
                 "source": target["name"],
                 "title": clean(text),
                 "url": href,
-                "excerpt": "",
+                "excerpt": excerpt,
                 "published": "",
-                "type": "scraped"
             })
 
-        # fallback: grab headings if no links matched
+        # Strategy 2: headings fallback if no links found
         if not results:
-            for tag in soup.find_all(["h2", "h3"]):
+            for tag in soup.find_all(["h1", "h2", "h3"]):
                 text = tag.get_text(strip=True)
-                if matches_keywords(text) and len(text) > 10:
+                if matches_keywords(text) and 8 < len(text) < 200:
                     results.append({
                         "source": target["name"],
                         "title": clean(text),
                         "url": target["url"],
                         "excerpt": "",
                         "published": "",
-                        "type": "scraped"
                     })
 
     except Exception as e:
-        print(f"  Scrape error for {target['name']}: {e}")
+        print(f"  Error scraping {target['name']}: {e}")
 
     return results
 
@@ -234,7 +247,7 @@ async def fetch_scraped():
             print(f"Scraping: {target['name']}...")
             items = await scrape_target(page, target)
             results.extend(items)
-            print(f"  Found {len(items)} items")
+            print(f"  {len(items)} items")
 
         await browser.close()
     return results
@@ -249,8 +262,9 @@ def write_digest(all_results):
     seen_urls = set()
     unique = []
     for item in all_results:
-        if item["url"] not in seen_urls:
-            seen_urls.add(item["url"])
+        url = item["url"]
+        if url and url not in seen_urls:
+            seen_urls.add(url)
             unique.append(item)
 
     # group by source
@@ -269,14 +283,24 @@ def write_digest(all_results):
         for item in items:
             lines.append(f"**[{item['title']}]({item['url']})**")
             if item["excerpt"]:
-                lines.append(f"> {item['excerpt'][:200]}")
+                lines.append(f"> {item['excerpt']}")
             if item["published"]:
                 lines.append(f"_published: {item['published']}_")
             lines.append("")
         lines.append("---\n")
 
+    content = "\n".join(lines)
+
+    # avoid overwriting if already exists today
+    if os.path.exists(filepath):
+        from datetime import datetime as dt
+        ts = dt.now(timezone.utc).strftime("%H%M")
+        catch_dir = "digest/catches"
+        os.makedirs(catch_dir, exist_ok=True)
+        filepath = f"{catch_dir}/{DATE}-{ts}.md"
+
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+        f.write(content)
 
     print(f"\nDigest written: {filepath} ({len(unique)} items)")
     return filepath, len(unique)
@@ -287,15 +311,14 @@ async def main():
     print("=== open calls aggregator ===\n")
 
     rss_results = fetch_rss()
-    print(f"\nRSS: {len(rss_results)} items\n")
+    print(f"\nRSS total: {len(rss_results)}\n")
 
     scraped_results = await fetch_scraped()
-    print(f"\nScraped: {len(scraped_results)} items\n")
+    print(f"Scraped total: {len(scraped_results)}\n")
 
     all_results = rss_results + scraped_results
     filepath, count = write_digest(all_results)
 
-    # write count to env for Telegram notification
     with open(os.environ.get("GITHUB_ENV", "/dev/null"), "a") as f:
         f.write(f"DIGEST_COUNT={count}\n")
         f.write(f"DIGEST_DATE={DATE}\n")
